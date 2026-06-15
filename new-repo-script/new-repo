@@ -1,0 +1,29 @@
+#!/bin/zsh
+
+DEFAULT_NAME=$(basename "$PWD")
+
+echo "リポジトリ名 [$DEFAULT_NAME]: "
+read REPO_NAME
+REPO_NAME=${REPO_NAME:-$DEFAULT_NAME}
+
+echo "公開設定: 1) public  2) private [2]: "
+read CHOICE
+CHOICE=${CHOICE:-2}
+
+if [ "$CHOICE" = "1" ]; then
+  VISIBILITY="--public"
+else
+  VISIBILITY="--private"
+fi
+
+git init
+git config --global init.defaultBranch main
+git branch -m main 2>/dev/null
+touch .gitkeep
+git add .
+git commit -m "initial commit"
+
+gh repo create "$REPO_NAME" $VISIBILITY --source=. --remote=origin --push
+
+echo ""
+echo "完了！ https://github.com/$(gh api user --jq .login)/$REPO_NAME"
