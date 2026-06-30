@@ -2,9 +2,36 @@
 
 DEFAULT_NAME=$(basename "$PWD")
 
-echo "リポジトリ名 [$DEFAULT_NAME]: "
-read REPO_NAME
-REPO_NAME=${REPO_NAME:-$DEFAULT_NAME}
+# GitHub のリポジトリ名は英数字・ハイフン・アンダースコア・ピリオドのみ有効。
+# 日本語などの非ASCII文字は GitHub 側で除去され、名前が "-" に潰れてしまう。
+is_valid_repo_name() {
+  [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
+# デフォルト名（フォルダ名）が無効なら、補完候補としては使わない
+if is_valid_repo_name "$DEFAULT_NAME"; then
+  PROMPT_DEFAULT=" [$DEFAULT_NAME]"
+else
+  echo "⚠️  フォルダ名「$DEFAULT_NAME」は GitHub のリポジトリ名に使えない文字を含みます（日本語など）。"
+  echo "    そのまま使うと名前が \"-\" に潰れるため、英数字・ハイフン等で名前を入力してください。"
+  DEFAULT_NAME=""
+  PROMPT_DEFAULT=""
+fi
+
+while true; do
+  echo "リポジトリ名${PROMPT_DEFAULT}: "
+  read REPO_NAME
+  REPO_NAME=${REPO_NAME:-$DEFAULT_NAME}
+
+  if [ -z "$REPO_NAME" ]; then
+    echo "リポジトリ名を入力してください。"
+    continue
+  fi
+  if is_valid_repo_name "$REPO_NAME"; then
+    break
+  fi
+  echo "⚠️  「$REPO_NAME」は使えません。英数字・ハイフン(-)・アンダースコア(_)・ピリオド(.)のみで入力してください。"
+done
 
 echo "公開設定: 1) public  2) private [2]: "
 read CHOICE
