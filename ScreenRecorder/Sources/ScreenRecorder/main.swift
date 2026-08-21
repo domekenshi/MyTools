@@ -5,11 +5,29 @@ import SwiftUI
 
 @main
 struct ScreenRecorderApp: App {
+    @NSApplicationDelegateAdaptor(ApplicationDelegate.self) private var applicationDelegate
+
     var body: some Scene {
         WindowGroup {
             ContentViewContainer().frame(width: 460, height: 370)
         }
         .windowResizability(.contentSize)
+    }
+}
+
+@MainActor
+private final class ApplicationDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        applyBundledIcon()
+        // SwiftUI completes some application setup after this callback. Apply
+        // once more on the next run-loop turn so Mission Control and Dock use it.
+        DispatchQueue.main.async { [weak self] in self?.applyBundledIcon() }
+    }
+
+    private func applyBundledIcon() {
+        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+              let iconImage = NSImage(contentsOf: iconURL) else { return }
+        NSApplication.shared.applicationIconImage = iconImage
     }
 }
 

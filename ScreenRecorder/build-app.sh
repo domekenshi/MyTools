@@ -7,9 +7,19 @@ cd "$script_directory"
 swift build -c release
 
 app_path="$script_directory/ScreenRecorder.app"
+asset_info_path="$app_path/Contents/AppIcon-info.plist"
 rm -rf "$app_path"
 mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources"
 cp "$(swift build -c release --show-bin-path)/ScreenRecorder" "$app_path/Contents/MacOS/ScreenRecorder"
+
+xcrun actool \
+  --compile "$app_path/Contents/Resources" \
+  --platform macosx \
+  --minimum-deployment-target 15.0 \
+  --app-icon AppIcon \
+  --output-partial-info-plist "$asset_info_path" \
+  "$script_directory/Assets/AppIcon.xcassets"
+rm "$asset_info_path"
 
 cat > "$app_path/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -22,12 +32,18 @@ cat > "$app_path/Contents/Info.plist" <<'PLIST'
 	<string>local.mytools.screenrecorder</string>
 	<key>CFBundleName</key>
 	<string>ScreenRecorder</string>
+	<key>CFBundleDisplayName</key>
+	<string>ScreenRecorder</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon.icns</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>4</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>NSMicrophoneUsageDescription</key>
@@ -48,5 +64,8 @@ codesign --force --deep --sign - \
   --identifier local.mytools.screenrecorder \
   --requirements '=designated => identifier "local.mytools.screenrecorder"' \
   "$app_path"
+
+rm -rf /Applications/ScreenRecorder.app
+ditto "$app_path" /Applications/ScreenRecorder.app
 
 echo "作成しました: $app_path"
