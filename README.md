@@ -8,6 +8,7 @@
 | --- | --- |
 | [new-repo-script](new-repo-script/) | ローカルフォルダを GitHub リポジトリに一括登録するシェルスクリプト |
 | [ScreenRecorder](ScreenRecorder/) | 画面・範囲・システム音声をMP4へ録画するmacOSアプリ |
+| [FocusLoop](FocusLoop/) | 集中時間と5分休憩を自動で繰り返す軽量なmacOSメニューバーアプリ |
 
 各ツールの詳細は、それぞれのディレクトリ内の `README.md` を参照。
 
