@@ -20,6 +20,7 @@ private final class FocusTimer: ObservableObject {
     @Published var customMinutes = 45 { didSet { resetIfIdle() } }
     @Published var usesCustomMinutes = false { didSet { resetIfIdle() } }
     @Published var restMinutes = 5 { didSet { resetIfIdle() } }
+    @Published var usesCustomRestMinutes = false
     @Published var alarmDuration = 5
 
     private var deadline: Date?
@@ -46,6 +47,15 @@ private final class FocusTimer: ObservableObject {
 
     func selectCustom() {
         usesCustomMinutes = true
+    }
+
+    func selectRest(minutes: Int) {
+        usesCustomRestMinutes = false
+        restMinutes = minutes
+    }
+
+    func selectCustomRest() {
+        usesCustomRestMinutes = true
     }
 
     func start() {
@@ -174,17 +184,19 @@ private struct TimerView: View {
             .accessibilityLabel("\(model.phase.title)、残り\(model.timeText)")
 
             if model.isRunning {
-                Button("停止する", role: .destructive) { model.stop() }
+                Button(role: .destructive) { model.stop() } label: {
+                    Text("停止する").frame(maxWidth: .infinity)
+                }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .frame(maxWidth: .infinity)
             } else {
                 settings
-                Button("集中をはじめる") { model.start() }
+                Button { model.start() } label: {
+                    Text("集中をはじめる").frame(maxWidth: .infinity)
+                }
                     .buttonStyle(.borderedProminent)
                     .tint(Color(red: 0.25, green: 0.47, blue: 0.36))
                     .controlSize(.large)
-                    .frame(maxWidth: .infinity)
             }
 
             Divider()
@@ -203,49 +215,71 @@ private struct TimerView: View {
     }
 
     private var settings: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("集中時間").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            settingLabel("集中時間")
             HStack {
                 presetButton(30)
                 presetButton(60)
-                Button("カスタム") { model.selectCustom() }
+                Button { model.selectCustom() } label: {
+                    Text("カスタム").frame(maxWidth: .infinity)
+                }
                     .buttonStyle(.bordered)
                     .tint(model.usesCustomMinutes ? model.phase.color : .secondary)
             }
             if model.usesCustomMinutes {
-                Stepper("\(model.customMinutes)分", value: $model.customMinutes, in: 1...180)
+                Stepper("集中時間：\(model.customMinutes)分", value: $model.customMinutes, in: 1...180)
             }
+
+            settingLabel("休憩時間")
             HStack {
-                Text("休憩時間").font(.caption).foregroundStyle(.secondary)
-                Spacer()
                 restPresetButton(5)
                 restPresetButton(10)
-            }
-            Stepper("細かく調整：\(model.restMinutes)分", value: $model.restMinutes, in: 1...60)
-            HStack {
-                Text("アラーム").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Picker("アラーム", selection: $model.alarmDuration) {
-                    Text("5秒").tag(5)
-                    Text("10秒").tag(10)
+                Button { model.selectCustomRest() } label: {
+                    Text("カスタム").frame(maxWidth: .infinity)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 130)
+                    .buttonStyle(.bordered)
+                    .tint(model.usesCustomRestMinutes ? model.phase.color : .secondary)
+            }
+            if model.usesCustomRestMinutes {
+                Stepper("休憩時間：\(model.restMinutes)分", value: $model.restMinutes, in: 1...60)
+            }
+
+            settingLabel("アラーム")
+            HStack {
+                alarmButton(5)
+                alarmButton(10)
             }
         }
     }
 
+    private func settingLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+    }
+
     private func presetButton(_ minutes: Int) -> some View {
-        Button("\(minutes)分") { model.select(minutes: minutes) }
+        Button { model.select(minutes: minutes) } label: {
+            Text("\(minutes)分").frame(maxWidth: .infinity)
+        }
             .buttonStyle(.bordered)
             .tint(!model.usesCustomMinutes && model.selectedMinutes == minutes ? model.phase.color : .secondary)
     }
 
     private func restPresetButton(_ minutes: Int) -> some View {
-        Button("\(minutes)分") { model.restMinutes = minutes }
+        Button { model.selectRest(minutes: minutes) } label: {
+            Text("\(minutes)分").frame(maxWidth: .infinity)
+        }
             .buttonStyle(.bordered)
-            .tint(model.restMinutes == minutes ? model.phase.color : .secondary)
+            .tint(!model.usesCustomRestMinutes && model.restMinutes == minutes ? model.phase.color : .secondary)
+    }
+
+    private func alarmButton(_ seconds: Int) -> some View {
+        Button { model.alarmDuration = seconds } label: {
+            Text("\(seconds)秒").frame(maxWidth: .infinity)
+        }
+            .buttonStyle(.bordered)
+            .tint(model.alarmDuration == seconds ? model.phase.color : .secondary)
     }
 }
 
