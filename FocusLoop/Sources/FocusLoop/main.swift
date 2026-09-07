@@ -10,6 +10,82 @@ private enum TimerPhase: String {
     var color: Color { self == .focus ? Color(red: 0.25, green: 0.47, blue: 0.36) : .orange }
 }
 
+private enum PresentationMode {
+    case menuBar
+    case window
+}
+
+private enum PreferredDisplay: String {
+    case menuBar
+    case window
+}
+
+private struct MovableWindowConfigurator: NSViewRepresentable {
+    final class Coordinator {
+        var configuredWindowNumber: Int?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        configureWhenAttached(view, coordinator: context.coordinator)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        configureWhenAttached(nsView, coordinator: context.coordinator)
+    }
+
+    private func configureWhenAttached(_ view: NSView, coordinator: Coordinator) {
+        DispatchQueue.main.async {
+            guard let window = view.window,
+                  coordinator.configuredWindowNumber != window.windowNumber else { return }
+            coordinator.configuredWindowNumber = window.windowNumber
+            configure(window)
+        }
+    }
+
+    private func configure(_ window: NSWindow?) {
+        guard let window else { return }
+        window.styleMask.insert([.titled, .closable, .miniaturizable])
+        window.title = "集中ループタイマー"
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+        window.isMovable = true
+        window.isMovableByWindowBackground = true
+        window.level = .normal
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+}
+
+private struct TimerChoiceButtonStyle: ButtonStyle {
+    let isSelected: Bool
+    let selectionColor: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 8)
+            .background {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(isSelected ? selectionColor : Color(nsColor: .controlBackgroundColor))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(
+                        isSelected ? selectionColor : Color.secondary.opacity(0.65),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            }
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
 @MainActor
 private final class FocusTimer: ObservableObject {
     @Published private(set) var phase: TimerPhase = .focus
@@ -22,6 +98,7 @@ private final class FocusTimer: ObservableObject {
     @Published var restMinutes = 5 { didSet { resetIfIdle() } }
     @Published var usesCustomRestMinutes = false
     @Published var alarmDuration = 5
+    @Published var preferredDisplay: PreferredDisplay = .menuBar
 
     private var deadline: Date?
     private var timer: Timer?
@@ -151,6 +228,9 @@ private final class FocusTimer: ObservableObject {
 
 private struct TimerView: View {
     @ObservedObject var model: FocusTimer
+    let presentation: PresentationMode
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
         VStack(spacing: 18) {
@@ -212,6 +292,16 @@ private struct TimerView: View {
         }
         .padding(22)
         .frame(width: 340)
+        .background {
+            if presentation == .window {
+                MovableWindowConfigurator()
+            }
+        }
+        .onAppear {
+            if presentation == .menuBar && model.preferredDisplay == .window {
+                openWindow(id: "timer-window")
+            }
+        }
     }
 
     private var settings: some View {
@@ -220,11 +310,17 @@ private struct TimerView: View {
             HStack {
                 presetButton(30)
                 presetButton(60)
+                presetButton(75)
+            }
+            HStack {
+                presetButton(150)
                 Button { model.selectCustom() } label: {
-                    Text("カスタム").frame(maxWidth: .infinity)
+                    choiceLabel("カスタム", selected: model.usesCustomMinutes)
                 }
-                    .buttonStyle(.bordered)
-                    .tint(model.usesCustomMinutes ? model.phase.color : .secondary)
+                    .buttonStyle(TimerChoiceButtonStyle(
+                        isSelected: model.usesCustomMinutes,
+                        selectionColor: model.phase.color
+                    ))
             }
             if model.usesCustomMinutes {
                 Stepper("集中時間：\(model.customMinutes)分", value: $model.customMinutes, in: 1...180)
@@ -235,10 +331,12 @@ private struct TimerView: View {
                 restPresetButton(5)
                 restPresetButton(10)
                 Button { model.selectCustomRest() } label: {
-                    Text("カスタム").frame(maxWidth: .infinity)
+                    choiceLabel("カスタム", selected: model.usesCustomRestMinutes)
                 }
-                    .buttonStyle(.bordered)
-                    .tint(model.usesCustomRestMinutes ? model.phase.color : .secondary)
+                    .buttonStyle(TimerChoiceButtonStyle(
+                        isSelected: model.usesCustomRestMinutes,
+                        selectionColor: model.phase.color
+                    ))
             }
             if model.usesCustomRestMinutes {
                 Stepper("休憩時間：\(model.restMinutes)分", value: $model.restMinutes, in: 1...60)
@@ -248,6 +346,12 @@ private struct TimerView: View {
             HStack {
                 alarmButton(5)
                 alarmButton(10)
+            }
+
+            settingLabel("表示方法")
+            HStack {
+                displayButton(.menuBar, title: "メニューバー", symbol: "menubar.rectangle")
+                displayButton(.window, title: "ウインドウ", symbol: "macwindow")
             }
         }
     }
@@ -259,27 +363,58 @@ private struct TimerView: View {
     }
 
     private func presetButton(_ minutes: Int) -> some View {
-        Button { model.select(minutes: minutes) } label: {
-            Text("\(minutes)分").frame(maxWidth: .infinity)
+        let isSelected = !model.usesCustomMinutes && model.selectedMinutes == minutes
+        return Button { model.select(minutes: minutes) } label: {
+            choiceLabel("\(minutes)分", selected: isSelected)
         }
-            .buttonStyle(.bordered)
-            .tint(!model.usesCustomMinutes && model.selectedMinutes == minutes ? model.phase.color : .secondary)
+            .buttonStyle(TimerChoiceButtonStyle(isSelected: isSelected, selectionColor: model.phase.color))
     }
 
     private func restPresetButton(_ minutes: Int) -> some View {
-        Button { model.selectRest(minutes: minutes) } label: {
-            Text("\(minutes)分").frame(maxWidth: .infinity)
+        let isSelected = !model.usesCustomRestMinutes && model.restMinutes == minutes
+        return Button { model.selectRest(minutes: minutes) } label: {
+            choiceLabel("\(minutes)分", selected: isSelected)
         }
-            .buttonStyle(.bordered)
-            .tint(!model.usesCustomRestMinutes && model.restMinutes == minutes ? model.phase.color : .secondary)
+            .buttonStyle(TimerChoiceButtonStyle(isSelected: isSelected, selectionColor: model.phase.color))
     }
 
     private func alarmButton(_ seconds: Int) -> some View {
-        Button { model.alarmDuration = seconds } label: {
-            Text("\(seconds)秒").frame(maxWidth: .infinity)
+        let isSelected = model.alarmDuration == seconds
+        return Button { model.alarmDuration = seconds } label: {
+            choiceLabel("\(seconds)秒", selected: isSelected)
         }
-            .buttonStyle(.bordered)
-            .tint(model.alarmDuration == seconds ? model.phase.color : .secondary)
+            .buttonStyle(TimerChoiceButtonStyle(isSelected: isSelected, selectionColor: model.phase.color))
+    }
+
+    private func displayButton(_ display: PreferredDisplay, title: String, symbol: String) -> some View {
+        let isSelected = model.preferredDisplay == display
+        return Button {
+            model.preferredDisplay = display
+            if display == .window {
+                let menuPopover = NSApplication.shared.keyWindow
+                openWindow(id: "timer-window")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    menuPopover?.orderOut(nil)
+                }
+            } else if presentation == .window {
+                dismissWindow(id: "timer-window")
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : symbol)
+                Text(title)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(TimerChoiceButtonStyle(isSelected: isSelected, selectionColor: model.phase.color))
+    }
+
+    private func choiceLabel(_ title: String, selected: Bool) -> some View {
+        HStack(spacing: 5) {
+            if selected { Image(systemName: "checkmark") }
+            Text(title)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -289,10 +424,16 @@ private struct FocusLoopApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            TimerView(model: model)
+            TimerView(model: model, presentation: .menuBar)
         } label: {
             Label(model.menuTitle, systemImage: model.phase.symbol)
         }
         .menuBarExtraStyle(.window)
+
+        Window("集中ループタイマー", id: "timer-window") {
+            TimerView(model: model, presentation: .window)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
     }
 }
