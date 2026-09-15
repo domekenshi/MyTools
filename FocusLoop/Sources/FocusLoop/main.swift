@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 private enum TimerPhase: String {
@@ -43,6 +44,19 @@ private enum RunningWindowSize {
 
 private enum PreferenceKey {
     static let preferredDisplay = "FocusLoop.preferredDisplay"
+}
+
+@MainActor
+private func confirmAndQuit() {
+    let alert = NSAlert()
+    alert.messageText = "集中ループタイマーを終了しますか？"
+    alert.informativeText = "終了するとメニューバーから消え、実行中のタイマーも停止します。"
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "終了する")
+    alert.addButton(withTitle: "キャンセル")
+
+    guard alert.runModal() == .alertFirstButtonReturn else { return }
+    NSApplication.shared.terminate(nil)
 }
 
 private struct MovableWindowConfigurator: NSViewRepresentable {
@@ -124,6 +138,7 @@ private final class FocusTimer: ObservableObject {
     @Published var usesCustomRestMinutes = false
     @Published var alarmDuration = 5
     @Published var runningWindowSize: RunningWindowSize = .small
+    @Published private(set) var launchesAtLogin = SMAppService.mainApp.status == .enabled
     @Published var preferredDisplay: PreferredDisplay {
         didSet {
             UserDefaults.standard.set(preferredDisplay.rawValue, forKey: PreferenceKey.preferredDisplay)
@@ -198,6 +213,24 @@ private final class FocusTimer: ObservableObject {
         if let activityToken {
             ProcessInfo.processInfo.endActivity(activityToken)
             self.activityToken = nil
+        }
+    }
+
+    func setLaunchesAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            launchesAtLogin = SMAppService.mainApp.status == .enabled
+        } catch {
+            launchesAtLogin = SMAppService.mainApp.status == .enabled
+            let alert = NSAlert()
+            alert.messageText = "自動起動の設定を変更できませんでした"
+            alert.informativeText = "システム設定の「一般」→「ログイン項目と機能拡張」から設定してください。"
+            alert.alertStyle = .warning
+            alert.runModal()
         }
     }
 
@@ -345,7 +378,7 @@ private struct TimerView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("終了") { NSApplication.shared.terminate(nil) }
+                    Button("終了…") { confirmAndQuit() }
                         .buttonStyle(.plain)
                         .font(.caption)
                 }
@@ -454,6 +487,13 @@ private struct TimerView: View {
                 displayButton(.menuBar, title: "メニューバー", symbol: "menubar.rectangle")
                 displayButton(.window, title: "ウインドウ", symbol: "macwindow")
             }
+
+            Toggle("ログイン時に自動起動", isOn: Binding(
+                get: { model.launchesAtLogin },
+                set: { model.setLaunchesAtLogin($0) }
+            ))
+            .toggleStyle(.switch)
+            .font(.caption)
         }
     }
 
@@ -613,5 +653,14 @@ private struct FocusLoopApp: App {
         }
         .defaultSize(width: 374, height: 640)
         .defaultLaunchBehavior(.suppressed)
+
+        .commands {
+            CommandGroup(replacing: .appTermination) {
+                Button("集中ループタイマーを終了…") {
+                    confirmAndQuit()
+                }
+                .keyboardShortcut("q")
+            }
+        }
     }
 }
