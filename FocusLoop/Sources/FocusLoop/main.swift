@@ -137,7 +137,7 @@ private final class FocusTimer: ObservableObject {
     @Published var restMinutes = 5 { didSet { resetIfIdle() } }
     @Published var usesCustomRestMinutes = false
     @Published var alarmDuration = 5
-    @Published var runningWindowSize: RunningWindowSize = .small
+    @Published var runningWindowSize: RunningWindowSize = .minimum
     @Published private(set) var launchesAtLogin = SMAppService.mainApp.status == .enabled
     @Published var preferredDisplay: PreferredDisplay {
         didSet {
@@ -188,7 +188,7 @@ private final class FocusTimer: ObservableObject {
     func start() {
         guard !isRunning else { return }
         stopAlarm()
-        runningWindowSize = .small
+        runningWindowSize = .minimum
         phase = .focus
         completedSets = 0
         remainingSeconds = focusSeconds
